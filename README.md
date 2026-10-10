@@ -44,6 +44,26 @@ delays = list(backoff(jitter="decorrelated", max_attempts=5, rng=random.Random(4
 The call returns an iterator. It never sleeps, never retries, never touches the clock
 or the network, so it is trivial to test and drops into any loop, async or sync.
 
+## Why
+
+Everyone reaches for a backoff schedule, almost nobody wants the retry framework
+wrapped around it. The delay math (exponential growth, a ceiling, and the full,
+equal and decorrelated jitter from the AWS Architecture Blog post
+[Exponential Backoff And Jitter](https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/))
+is simple, but it is tedious to get right and easy to get subtly wrong.
+
+The popular packages couple it to a policy you may not want:
+
+- `backoff` and `tenacity` are retry frameworks: the wait generators live inside
+  decorators and context managers, not as a standalone delay sequence.
+- `expbackoff` calls `sleep()` for you inside its loop, so you cannot take the delay
+  and decide what to do with it.
+- `backoff-utils` ships retry strategies, not a plain reusable iterator of floats.
+
+`backoffs` is the one piece they all contain and none expose on its own: a typed,
+zero-dependency iterator that yields the delay sequence and nothing else. You keep
+your own loop, your own clock, and your own retry decision.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
