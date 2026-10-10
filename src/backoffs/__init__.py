@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from ._backoff import backoff
+
 __version__ = "0.1.0"
 
-__all__: list[str] = []
+__all__ = ["backoff"]
