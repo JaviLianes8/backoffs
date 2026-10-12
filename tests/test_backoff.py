@@ -129,3 +129,10 @@ def test_seeded_sequences_are_identical_to_the_0_1_release() -> None:
 def test_errors_are_the_typed_value_error_subclass() -> None:
     with pytest.raises(InvalidPolicyError):
         backoff(base=0.0)
+
+
+def test_inputs_accepted_by_0_1_keep_working() -> None:
+    assert list(backoff(cap=float("inf"), max_attempts=3)) == [0.1, 0.2, 0.4]
+    assert list(backoff(base="0.5", max_attempts=2)) == [0.5, 1.0]  # type: ignore[arg-type]
+    assert list(backoff(max_attempts=2.0)) == [0.1, 0.2]  # type: ignore[arg-type]
+    assert list(backoff(base=1.0, factor=float("inf"), cap=5.0, max_attempts=3)) == [1.0, 5.0, 5.0]

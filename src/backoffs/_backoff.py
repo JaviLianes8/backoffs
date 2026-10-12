@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import math
 import random
+import sys
 from collections.abc import Iterator
 
 from ._errors import InvalidPolicyError
@@ -45,6 +47,17 @@ def backoff(
     """
     if jitter not in _JITTERS:
         raise InvalidPolicyError(f"jitter must be one of {tuple(_JITTERS)}, got {jitter!r}")
+    # 0.1 coerced with float() and accepted infinities and float counts; keep that.
+    base, factor, cap = float(base), float(factor), float(cap)
+    if factor == math.inf:
+        factor = sys.float_info.max
+    if isinstance(max_attempts, float) and max_attempts >= 0 and math.isfinite(max_attempts):
+        max_attempts = math.ceil(max_attempts)
     attempts = optional_count("max_attempts", max_attempts)
-    policy = Policy(Exponential(base, factor), _JITTERS[jitter], cap=cap, max_retries=attempts)
+    policy = Policy(
+        Exponential(base, factor),
+        _JITTERS[jitter],
+        cap=None if cap == math.inf else cap,
+        max_retries=attempts,
+    )
     return policy.delays(rng=rng)

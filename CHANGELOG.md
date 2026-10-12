@@ -28,7 +28,8 @@ All notable changes to this project are documented here. The format follows
 ### Changed
 
 - `backoff()` is now a thin wrapper over `Policy`. Its seeded sequences are unchanged
-  and it raises `InvalidPolicyError`, a `ValueError` subclass.
+  and it raises `InvalidPolicyError`, a `ValueError` subclass. NaN arguments are now
+  rejected. It returns a `Delays` iterator rather than a generator object.
 
 ## [0.1.0]
 
