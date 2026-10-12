@@ -112,6 +112,40 @@ def test_retry_after_prints_seconds(capsys: Capture) -> None:
     assert capsys.readouterr().out.strip() == "0"
 
 
+def test_retry_after_prints_large_values_in_full(capsys: Capture) -> None:
+    assert main(["retry-after", "1234567"]) == 0
+    assert capsys.readouterr().out.strip() == "1234567"
+
+
+def test_schedule_of_zero_delays_with_only_a_budget_is_truncated(capsys: Capture) -> None:
+    args = ["schedule", "--strategy", "constant", "--base", "0", "--max-elapsed", "1"]
+    assert main([*args, "--format", "plain"]) == 0
+    captured = capsys.readouterr()
+    assert len(captured.out.split()) == 10_000
+    assert "truncated at 10000 rows" in captured.err
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "nan", "soon"])
+def test_attempt_timeout_must_be_positive(capsys: Capture, value: str) -> None:
+    with pytest.raises(SystemExit) as caught:
+        main(["run", "--attempt-timeout", value, "--", "x"])
+    assert caught.value.code == 1
+    assert "positive number of seconds" in capsys.readouterr().err
+
+
+def test_python_dash_m_runs_the_command() -> None:
+    import subprocess
+
+    result = subprocess.run(
+        [sys.executable, "-m", "backoffs", "schedule", "--max-retries", "2", "--format", "plain"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**__import__("os").environ, "PYTHONPATH": str(Path(__file__).parents[1] / "src")},
+    )
+    assert result.returncode == 0 and result.stdout.split() == ["1", "2"]
+
+
 def script(tmp_path: Path, body: str) -> list[str]:
     path = tmp_path / "cmd.py"
     path.write_text(body)

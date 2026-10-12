@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import random
 import sys
@@ -12,9 +13,11 @@ from typing import NoReturn
 from . import __version__
 from ._cli_policy import add_policy_options, build_policy
 from ._cli_run import run_command
-from ._errors import BackoffError
+from ._errors import BackoffError, InvalidPolicyError
 from ._retry_after import parse_retry_after
+from ._validate import positive
 
+_MAX_ROWS = 10_000
 _EPILOG = """examples:
   backoffs schedule --max-retries 6
   backoffs schedule --jitter full --seed 42 --format json
@@ -42,6 +45,13 @@ def _subparser(
         epilog=_EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+
+
+def _seconds(text: str) -> float:
+    try:
+        return positive("--attempt-timeout", float(text))
+    except (ValueError, InvalidPolicyError) as exc:
+        raise argparse.ArgumentTypeError(f"must be a positive number of seconds: {text!r}") from exc
 
 
 def _parser() -> _Parser:
@@ -76,9 +86,12 @@ def _parser() -> _Parser:
         action="append",
         default=[],
         metavar="CODE",
-        help="retry only on this exit code (repeatable; default: any non-zero code)",
+        help="retry only on this exit code (repeatable; default: any non-zero code); "
+        "a timed out attempt is always retried",
     )
-    run.add_argument("--attempt-timeout", type=float, metavar="S", help="kill an attempt after S")
+    run.add_argument(
+        "--attempt-timeout", type=_seconds, metavar="S", help="kill an attempt after S seconds"
+    )
     run.add_argument("-q", "--quiet", action="store_true", help="do not report retries")
     run.add_argument("argv", nargs=argparse.REMAINDER, metavar="-- COMMAND [ARG ...]")
     after = _subparser(
@@ -96,7 +109,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
         if args.command == "retry-after":
-            print(f"{parse_retry_after(args.value):g}")
+            seconds = parse_retry_after(args.value)
+            print(int(seconds) if seconds.is_integer() else f"{seconds:.3f}")
             return 0
         rng = random.Random(args.seed) if args.seed is not None else None
         if args.command == "schedule":
@@ -122,7 +136,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 def _print_schedule(args: argparse.Namespace, rng: random.Random | None) -> None:
     delays = build_policy(args, default_retries=10).delays(rng=rng)
-    values = list(delays)
+    # A zero-delay schedule bounded only by --max-elapsed would never end.
+    values = list(itertools.islice(delays, _MAX_ROWS))
+    if len(values) == _MAX_ROWS and delays.stop_reason is None:
+        print(f"backoffs: schedule truncated at {_MAX_ROWS} rows", file=sys.stderr)
     if args.format == "json":
         payload = {"delays": values, "total": delays.total, "stop_reason": delays.stop_reason}
         print(json.dumps(payload, indent=2))
