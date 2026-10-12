@@ -90,12 +90,12 @@ def test_retry_after_seconds_from_the_server_is_honoured(server: str) -> None:
 
 def test_retry_after_http_date_from_the_server_is_honoured(server: str) -> None:
     FlakyHandler.failures = 1
-    moment = datetime.now(timezone.utc).replace(microsecond=0) + timedelta(seconds=2)
+    moment = datetime.now(timezone.utc).replace(microsecond=0) + timedelta(seconds=3)
     FlakyHandler.retry_after = format_datetime(moment, usegmt=True)
     policy = Policy(Constant(0.01), max_retries=2)
     assert retry(lambda: fetch(server), policy, retry_after=hint) == b"healthy"
     first, second = FlakyHandler.hits
-    assert second - first >= 0.9
+    assert second - first >= 1.5
 
 
 def test_a_server_that_never_recovers_exhausts_the_policy(server: str) -> None:

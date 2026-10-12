@@ -111,7 +111,7 @@ try:
         lambda: upload(blob),
         Policy.grpc(max_elapsed=60),
         retry_on=(ConnectionError, TimeoutError),
-        giveup=lambda exc: isinstance(exc, PermissionError),
+        giveup=lambda exc: isinstance(exc, ConnectionRefusedError),
         on_retry=lambda s: log.warning("attempt %d failed, waiting %.1fs", s.attempt, s.delay),
     )
 except RetryError as exc:

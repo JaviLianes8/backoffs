@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import subprocess
@@ -20,10 +21,11 @@ def installed(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
     """Yield the path of the installed ``backoffs`` console script."""
     work = tmp_path_factory.mktemp("e2e")
     wheels = work / "wheels"
-    subprocess.run(
-        [sys.executable, "-m", "pip", "wheel", "--no-deps", "-q", "-w", str(wheels), str(ROOT)],
-        check=True,
-    )
+    # Reuse a locally installed build backend when there is one, so the test also
+    # works offline; otherwise pip fetches hatchling into an isolated environment.
+    isolation = ["--no-build-isolation"] if importlib.util.find_spec("hatchling") else []
+    command = [sys.executable, "-m", "pip", "wheel", "--no-deps", "-q", *isolation]
+    subprocess.run([*command, "-w", str(wheels), str(ROOT)], check=True)
     (wheel,) = wheels.glob("backoffs-*.whl")
     env_dir = work / "venv"
     venv.EnvBuilder(with_pip=True).create(env_dir)
