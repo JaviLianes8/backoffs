@@ -91,6 +91,8 @@ def retry(
     * ``giveup(exc)`` returning true also propagates ``exc`` unchanged.
     * ``retry_after(exc)`` may return a server-requested wait in seconds (see
       :func:`~backoffs.parse_retry_after`); it becomes a floor for the next delay.
+      It must return ``None`` or a finite number of seconds ``>= 0``; anything else
+      raises :class:`~backoffs.InvalidPolicyError` chained to the failure.
     * ``on_retry`` is called with a :class:`RetryState` before each sleep.
     * When the policy runs out (``max_retries`` or ``max_elapsed``, the latter
       measured with ``clock``), :class:`~backoffs.RetryError` is raised from the last

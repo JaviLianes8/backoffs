@@ -22,8 +22,9 @@ class Policy:
     at most ``max_retries + 1`` times). ``max_elapsed`` is a time budget in seconds:
     a delay is only produced if ``elapsed + delay <= max_elapsed``, where ``elapsed``
     is the sum of earlier delays, or the clock reading when a clock is injected.
-    ``None`` disables a bound. A policy never sleeps; call :meth:`delays` for a fresh
-    iterator, or hand it to :func:`~backoffs.retry`.
+    ``None`` disables a bound (a schedule of zero delays bounded only by
+    ``max_elapsed`` without a clock never ends). A policy never sleeps; call
+    :meth:`delays` for a fresh iterator, or hand it to :func:`~backoffs.retry`.
 
     >>> from backoffs import Policy, Exponential
     >>> list(Policy(Exponential(base=1.0), cap=5.0, max_retries=5).delays())

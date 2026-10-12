@@ -13,11 +13,14 @@ Formulas, with ``raw = min(cap, schedule delay)``:
 from __future__ import annotations
 
 import random
+import sys
 from dataclasses import dataclass
 from typing import Protocol
 
 from ._errors import InvalidPolicyError
 from ._validate import finite, non_negative
+
+_CEILING = sys.float_info.max
 
 
 class Jitter(Protocol):
@@ -94,7 +97,9 @@ class DecorrelatedJitter:
         rng: random.Random,
         **_: object,
     ) -> float:
-        value = rng.uniform(base, previous * self.multiplier)
+        # Saturate so an uncapped chain stays finite instead of reaching infinity.
+        upper = min(previous * self.multiplier, _CEILING)
+        value = rng.uniform(base, upper)
         return value if cap is None else min(cap, value)
 
 
@@ -120,7 +125,7 @@ class ProportionalJitter:
         if attempt == 0 and not self.jitter_first:
             return raw
         spread = self.fraction * raw
-        return raw + rng.uniform(-spread, spread)
+        return min(raw + rng.uniform(-spread, spread), _CEILING)
 
 
 @dataclass(frozen=True, slots=True)
