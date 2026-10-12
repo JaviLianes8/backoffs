@@ -1,6 +1,9 @@
 # backoffs
 
-Pure backoff delay iterator: exponential growth, cap and jitter, never sleeps or retries.
+Typed, zero-dependency backoff delays. Exponential, linear, Fibonacci or constant
+growth, a cap, the AWS, gRPC and Google Cloud jitter strategies implemented exactly as
+published, retry and time budgets, `Retry-After` support, optional sync and async
+retry helpers, and a `backoffs` command line.
 
 ## Install
 
@@ -8,14 +11,20 @@ Pure backoff delay iterator: exponential growth, cap and jitter, never sleeps or
 pip install backoffs
 ```
 
-## Usage
+Python 3.10 or newer. No runtime dependencies.
+
+## The delay iterator
+
+The core of the library yields delays and nothing else. It never sleeps, so you keep
+your own loop, your own clock and your own retry decision.
 
 ```python
 import time
-from backoffs import backoff
+from backoffs import Exponential, FullJitter, Policy
 
-# Drive your own loop. backoffs only yields the delays.
-for delay in backoff(base=0.1, factor=2.0, cap=30.0, jitter="full", max_attempts=8):
+policy = Policy(Exponential(base=0.1, factor=2.0), FullJitter(), cap=30.0, max_retries=8)
+
+for delay in policy.delays():
     try:
         do_the_thing()
         break
@@ -23,46 +32,92 @@ for delay in backoff(base=0.1, factor=2.0, cap=30.0, jitter="full", max_attempts
         time.sleep(delay)
 ```
 
-The raw delay for attempt `n` is `base * factor ** n`, clamped to `cap`. The `jitter`
-argument reshapes each delay following the AWS backoff strategies:
+A `Policy` is frozen and reusable; every `delays()` call starts a fresh iterator.
+Each delay is `jitter(min(cap, schedule delay))`.
 
-- `"none"`: the raw capped delay.
-- `"full"`: uniform in `[0, raw]`.
-- `"equal"`: uniform in `[raw / 2, raw]`.
-- `"decorrelated"`: each delay is `min(cap, uniform(base, previous * 3))`.
+| Schedule | Retry `n` (from 0) waits |
+|---|---|
+| `Constant(delay)` | `delay` |
+| `Linear(start, step)` | `start + step * n` |
+| `Exponential(base, factor)` | `base * factor ** n` |
+| `Fibonacci(base)` | `base * F(n + 1)`: `b, b, 2b, 3b, 5b, ...` |
 
-`max_attempts` bounds the number of delays (`None`, the default, is an unbounded
-sequence). Pass a seeded `random.Random` as `rng` for reproducible jittered runs:
+| Jitter | Delay, with `raw = min(cap, schedule delay)` | Source |
+|---|---|---|
+| `NoJitter()` | `raw` | |
+| `FullJitter()` | `uniform(0, raw)` | AWS Architecture Blog |
+| `EqualJitter()` | `raw / 2 + uniform(0, raw / 2)` | AWS Architecture Blog |
+| `DecorrelatedJitter()` | `min(cap, uniform(base, previous * 3))` | AWS Architecture Blog |
+| `ProportionalJitter(0.2)` | `raw + uniform(-0.2 raw, 0.2 raw)` | gRPC connection backoff |
+| `AdditiveJitter(1.0)` | `min(raw + uniform(0, 1.0), cap)` | Google Cloud |
+
+Presets: `Policy.grpc()` (1 s initial, x1.6, 20% jitter, 120 s max, plain first wait)
+and `Policy.google_cloud()` (`min(2 ** n + up to 1 s, 32 s)`).
+
+## Budgets and Retry-After
 
 ```python
-import random
-from backoffs import backoff
+from backoffs import Policy, parse_retry_after
 
-delays = list(backoff(jitter="decorrelated", max_attempts=5, rng=random.Random(42)))
+policy = Policy(max_retries=10, max_elapsed=60.0)  # whichever comes first
+delays = policy.delays()
+
+# A server answered 429 with "Retry-After: 120" (or an HTTP-date):
+delays.floor_next(parse_retry_after(response.headers["Retry-After"]))
+wait = next(delays, None)  # at least 120 s, or None if that overruns the budget
 ```
 
-The call returns an iterator. It never sleeps, never retries, never touches the clock
-or the network, so it is trivial to test and drops into any loop, async or sync.
+`max_elapsed` stops before a delay that would push past the budget. Without a clock it
+sums the delays; pass `clock=time.monotonic` to `delays()` to count your own call time
+too. Pass a seeded `random.Random` as `rng` for reproducible jitter.
+
+## Retry helpers
+
+```python
+from backoffs import Policy, aretry, retry
+
+result = retry(
+    lambda: fetch(url),
+    Policy(max_retries=5),
+    retry_on=(ConnectionError, TimeoutError),
+    giveup=lambda exc: getattr(exc, "status", 0) == 404,
+    retry_after=lambda exc: getattr(exc, "retry_after", None),
+)
+
+result = await aretry(lambda: client.get(url), Policy.grpc(max_retries=6))
+```
+
+Exceptions outside `retry_on`, or accepted by `giveup`, propagate unchanged. When the
+policy runs out, `RetryError` is raised from the last exception and reports `attempts`,
+`elapsed` and `reason`. `sleep`, `clock` and `rng` are injectable for tests.
+
+## Command line
+
+```
+backoffs schedule --max-retries 6
+backoffs schedule --jitter full --seed 42 --format json
+backoffs schedule --preset grpc --max-retries 8
+backoffs run --max-retries 4 --base 0.5 -- curl --fail https://example.com/health
+backoffs retry-after "Sun, 06 Nov 1994 08:49:37 GMT"
+```
+
+`run` exits 0 once the command succeeds, and 1 (with the reason on stderr) when retries
+run out, the exit code is not listed in `--retry-on-exit`, or the command cannot start.
+
+See [GUIDE.md](GUIDE.md) for the formulas, their sources and more recipes.
+
+## The 0.1 API
+
+`backoff(base, factor, cap, jitter, max_attempts, rng)` still works and produces the
+same seeded sequences as before. It is a thin wrapper over `Policy`.
 
 ## Why
 
-Everyone reaches for a backoff schedule, almost nobody wants the retry framework
-wrapped around it. The delay math (exponential growth, a ceiling, and the full,
-equal and decorrelated jitter from the AWS Architecture Blog post
-[Exponential Backoff And Jitter](https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/))
-is simple, but it is tedious to get right and easy to get subtly wrong.
-
-The popular packages couple it to a policy you may not want:
-
-- `backoff` and `tenacity` are retry frameworks: the wait generators live inside
-  decorators and context managers, not as a standalone delay sequence.
-- `expbackoff` calls `sleep()` for you inside its loop, so you cannot take the delay
-  and decide what to do with it.
-- `backoff-utils` ships retry strategies, not a plain reusable iterator of floats.
-
-`backoffs` is the one piece they all contain and none expose on its own: a typed,
-zero-dependency iterator that yields the delay sequence and nothing else. You keep
-your own loop, your own clock, and your own retry decision.
+The delay math is simple but easy to get subtly wrong, and the popular packages couple
+it to a policy you may not want: `backoff` and `tenacity` keep their wait generators
+inside decorators, `expbackoff` sleeps for you. `backoffs` exposes the schedule as a
+plain, typed iterator first; the retry helpers and the CLI are thin layers on top that
+you can ignore.
 
 ## License
 
