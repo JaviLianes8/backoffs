@@ -6,7 +6,7 @@ from collections.abc import Iterator
 
 import pytest
 
-from backoffs import backoff
+from backoffs import InvalidPolicyError, backoff
 
 
 def test_no_jitter_yields_the_exact_exponential_sequence() -> None:
@@ -108,3 +108,24 @@ def test_validation_happens_eagerly_not_on_first_next() -> None:
     # A plain generator would defer the error until iteration; this must raise now.
     with pytest.raises(ValueError, match="jitter"):
         backoff(jitter="nope")
+
+
+def test_seeded_sequences_are_identical_to_the_0_1_release() -> None:
+    # Pinned from backoffs 0.1.0 so the rebuilt implementation cannot drift.
+    golden = {
+        "full": [0.16191638241658118, 0.15084917392450192, 1.3018689460797075,
+                 0.28974514667017104, 4.287056034453514, 3.656889169125855],
+        "equal": [0.3309581912082906, 0.575424586962251, 1.6509344730398539,
+                  2.1448725733350855, 6.143528017226757, 6.828444584562927],
+        "decorrelated": [0.8238327648331624, 0.797398889118812, 1.7316960405534292,
+                         0.8400947491099595, 1.5826339717283664, 2.0534106505149365],
+    }  # fmt: skip
+    for jitter, expected in golden.items():
+        rng = random.Random(7)
+        delays = backoff(base=0.5, factor=2.0, cap=10.0, jitter=jitter, max_attempts=6, rng=rng)
+        assert list(delays) == expected
+
+
+def test_errors_are_the_typed_value_error_subclass() -> None:
+    with pytest.raises(InvalidPolicyError):
+        backoff(base=0.0)
