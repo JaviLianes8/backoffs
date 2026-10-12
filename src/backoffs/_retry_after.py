@@ -64,18 +64,28 @@ def _parse_http_date(text: str, now: datetime) -> datetime:
     match = _RFC850.fullmatch(text)
     if match:
         _, day, month, yy, hh, mm, ss = match.groups()
-        year = now.year - now.year % 100 + int(yy)
-        moment = _build(year, month, int(day), hh, mm, ss, text)
-        # RFC 9110 5.6.7: a two-digit year more than 50 years in the future means the
-        # most recent past year with the same last two digits.
-        if moment - now > timedelta(days=50 * 365.2425):
-            moment = _build(year - 100, month, int(day), hh, mm, ss, text)
-        return moment
+        return _rfc850(int(yy), month, int(day), hh, mm, ss, text, now)
     match = _ASCTIME.fullmatch(text)
     if match:
         _, month, day, hh, mm, ss, year = match.groups()
         return _build(int(year), month, int(day.strip()), hh, mm, ss, text)
     raise RetryAfterError(f"not delay-seconds or an HTTP-date: {text!r}")
+
+
+def _rfc850(
+    yy: int, month: str, day: int, hh: str, mm: str, ss: str, text: str, now: datetime
+) -> datetime:
+    # RFC 9110 5.6.7: a two-digit year that appears more than 50 years in the future
+    # is the most recent past year with the same last two digits. So the answer is the
+    # latest year ending in ``yy`` that is at most 50 years ahead of ``now``.
+    horizon = timedelta(days=50 * 365.2425)
+    century = now.year - now.year % 100
+    for year in (century + 100 + yy, century + yy, century - 100 + yy):
+        if 1 <= year <= 9999:
+            moment = _build(year, month, day, hh, mm, ss, text)
+            if moment - now <= horizon:
+                return moment
+    raise RetryAfterError(f"invalid HTTP-date: {text!r}")
 
 
 def _build(year: int, month: str, day: int, hh: str, mm: str, ss: str, text: str) -> datetime:

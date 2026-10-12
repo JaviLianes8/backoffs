@@ -62,6 +62,12 @@ def test_rfc850_two_digit_year_in_the_near_future_stays_in_this_century() -> Non
     assert seconds == (datetime(2027, 1, 1, tzinfo=timezone.utc) - now).total_seconds()
 
 
+def test_rfc850_two_digit_year_can_roll_into_the_next_century() -> None:
+    now = datetime(2099, 6, 1, tzinfo=timezone.utc)
+    seconds = parse_retry_after("Monday, 01-Jun-01 00:00:00 GMT", now=now)
+    assert seconds == (datetime(2101, 6, 1, tzinfo=timezone.utc) - now).total_seconds()
+
+
 def test_rfc850_year_more_than_fifty_years_ahead_means_the_past_century() -> None:
     now = datetime(2026, 1, 1, tzinfo=timezone.utc)
     # 99 would be 2099 (73 years ahead), so it is 1999: already past.
