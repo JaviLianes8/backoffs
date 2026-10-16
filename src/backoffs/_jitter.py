@@ -191,5 +191,5 @@ class AdditiveJitter:
         object.__setattr__(self, "amount", non_negative("amount", self.amount))
 
     def apply(self, raw: float, *, cap: float | None, rng: random.Random, **_: object) -> float:
-        value = raw + rng.uniform(0.0, self.amount)
+        value = min(raw + rng.uniform(0.0, self.amount), _CEILING)
         return value if cap is None else min(value, cap)

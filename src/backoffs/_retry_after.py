@@ -95,7 +95,10 @@ def _rfc850(
     # RFC 9110 5.6.7: a two-digit year that appears more than 50 years in the future
     # is the most recent past year with the same last two digits. So the answer is the
     # latest year ending in ``yy`` that is at most 50 years ahead of ``now``.
-    horizon = _fifty_years_after(now.astimezone(timezone.utc))
+    try:
+        horizon = _fifty_years_after(now.astimezone(timezone.utc))
+    except OverflowError:
+        raise RetryAfterError("now is too close to the limits of datetime") from None
     century = now.year - now.year % 100
     for year in (century + 100 + yy, century + yy, century - 100 + yy):
         # Skip a year that starts beyond the horizon before building the date, so a

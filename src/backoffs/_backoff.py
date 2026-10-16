@@ -40,8 +40,10 @@ def backoff(
     sequence). Pass a seeded ``rng`` for reproducible jittered sequences.
 
     Arguments are validated eagerly and raise :class:`~backoffs.InvalidPolicyError`
-    (a ``ValueError``). For linear, Fibonacci or constant growth, time budgets and
-    the gRPC and Google Cloud strategies, use :class:`~backoffs.Policy`.
+    (a ``ValueError``), except that a ``base``, ``factor`` or ``cap`` ``float()``
+    cannot read at all (``None``, a list) raises ``TypeError``, as in 0.1. For
+    linear, Fibonacci or constant growth, time budgets and the gRPC and Google Cloud
+    strategies, use :class:`~backoffs.Policy`.
 
     The caller drives its own loop, for example ``for d in backoff(): time.sleep(d)``.
 

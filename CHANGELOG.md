@@ -56,6 +56,14 @@ exit statuses.
   9999 raises `RetryAfterError` instead of `OverflowError`; a delay longer than 309
   digits is refused without converting it; `now` must be a `datetime`.
 - `RetryError` survives pickling.
+- `AdditiveJitter` saturates at the largest float like the other strategies instead of
+  producing an infinite delay, and `Delays.total` saturates the same way, so
+  `backoffs schedule --format json` never prints `Infinity`.
+- A custom schedule's `raw()` may return any iterable, not only an iterator.
+- `parse_retry_after()` raises `RetryAfterError` instead of `OverflowError` for an RFC 850
+  date when `now` is at the very limits of `datetime`.
+- `backoffs run --retry-on-exit` matches a negative code on Windows, where the system
+  reports exit codes unsigned.
 - `backoffs run` refuses `--retry-on-exit 0`, an `--attempt-timeout` or `--cap` too long
   for the platform to wait, instead of failing with a traceback.
 

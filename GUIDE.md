@@ -153,6 +153,12 @@ survives pickling.
 A schedule must yield finite delays `>= 0` forever; a jitter must return a finite delay
 `>= 0`. Anything else raises `InvalidPolicyError` when the delay is drawn.
 
+## Threads
+
+A `Policy` is immutable and can be shared freely, across threads too; each `delays()`
+call, and each `retry()` or `aretry()` call, gets its own iterator. A single `Delays`
+iterator is not thread-safe: give each thread its own.
+
 ## Recipes
 
 ### Plan a schedule before shipping it

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import random
+import sys
 from collections.abc import Callable, Iterator
 from typing import TYPE_CHECKING
 
@@ -51,7 +52,10 @@ class Delays(Iterator[float]):
         self._rng = rng if rng is not None else random.Random()
         self._clock = clock
         self._start = self._read() if clock is not None else 0.0
-        self._raw = policy.schedule.raw()
+        try:
+            self._raw = iter(policy.schedule.raw())
+        except TypeError:
+            raise InvalidPolicyError("schedule.raw() must return an iterable") from None
         self._base = policy.schedule.first
         self._previous = self._base
         self._floor = 0.0
@@ -126,7 +130,8 @@ class Delays(Iterator[float]):
             if not math.isfinite(spent) or spent + delay > policy.max_elapsed:
                 return self._stop("max_elapsed")
         self.retries += 1
-        self.total += delay
+        # Saturate like the schedules, so a run of huge delays never sums to infinity.
+        self.total = min(self.total + delay, sys.float_info.max)
         return delay
 
     def _stop(self, reason: str) -> float:

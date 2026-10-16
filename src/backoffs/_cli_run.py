@@ -64,7 +64,9 @@ def run_command(
             return
         description = f"exit code {done.returncode}"
         status = exit_status(done.returncode)
-        if retry_on_exit and done.returncode not in retry_on_exit:
+        # Accept a code in either form: as the child returned it or as this process exits.
+        listed = done.returncode in retry_on_exit or status in retry_on_exit
+        if retry_on_exit and not listed:
             raise _NotRetryable(description, status)
         raise CommandFailed(description, status)
 
