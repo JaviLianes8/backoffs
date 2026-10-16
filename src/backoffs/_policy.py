@@ -112,7 +112,8 @@ class Policy:
         """Google Cloud truncated exponential backoff.
 
         ``wait = min((2 ** n) + random_number_milliseconds, maximum_backoff)`` with
-        a random part of up to 1000 ms; ``maximum_backoff`` is typically 32 or 64 s.
+        a random part of up to 1000 ms; ``maximum_backoff`` is typically 32 or 64 s and
+        must be at least the first wait, 1 s.
 
         >>> import random
         >>> from backoffs import Policy

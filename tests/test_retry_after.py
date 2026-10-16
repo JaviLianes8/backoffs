@@ -109,3 +109,18 @@ def test_naive_now_is_rejected() -> None:
 def test_non_string_is_rejected() -> None:
     with pytest.raises(RetryAfterError):
         parse_retry_after(120)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("now", "value", "year"),
+    [
+        (datetime(2026, 6, 15, tzinfo=timezone.utc), "Monday, 15-Jun-76 00:00:00 GMT", 2076),
+        (datetime(2026, 6, 15, tzinfo=timezone.utc), "Monday, 15-Jun-76 00:00:01 GMT", 1976),
+        (datetime(1999, 1, 1, tzinfo=timezone.utc), "Friday, 01-Jan-49 00:00:00 GMT", 2049),
+        (datetime(2028, 2, 29, tzinfo=timezone.utc), "Tuesday, 01-Mar-78 00:00:00 GMT", 2078),
+    ],
+)
+def test_rfc850_fifty_years_are_calendar_years(now: datetime, value: str, year: int) -> None:
+    seconds = parse_retry_after(value, now=now)
+    moment = now + timedelta(seconds=seconds) if seconds else None
+    assert (moment.year if moment else 1900 + int(value[-15:-13])) == year

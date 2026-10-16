@@ -95,16 +95,26 @@ def _rfc850(
     # RFC 9110 5.6.7: a two-digit year that appears more than 50 years in the future
     # is the most recent past year with the same last two digits. So the answer is the
     # latest year ending in ``yy`` that is at most 50 years ahead of ``now``.
-    horizon = timedelta(days=50 * 365.2425)
+    horizon = _fifty_years_after(now.astimezone(timezone.utc))
     century = now.year - now.year % 100
     for year in (century + 100 + yy, century + yy, century - 100 + yy):
         # Skip a year that starts beyond the horizon before building the date, so a
         # 29 February that only exists in an earlier candidate is not refused.
-        if 1 <= year <= 9999 and datetime(year, 1, 1, tzinfo=timezone.utc) - now <= horizon:
+        if 1 <= year <= 9999 and datetime(year, 1, 1, tzinfo=timezone.utc) <= horizon:
             moment = _build(year, month, day, hh, mm, ss, text)
-            if moment - now <= horizon:
+            if moment <= horizon:
                 return moment
     raise RetryAfterError(f"invalid HTTP-date: {preview(text)}")
+
+
+def _fifty_years_after(now: datetime) -> datetime:
+    """The same calendar moment 50 years later (29 February becomes 1 March)."""
+    if now.year + 50 > 9999:
+        return datetime.max.replace(tzinfo=timezone.utc)
+    try:
+        return now.replace(year=now.year + 50)
+    except ValueError:
+        return now.replace(year=now.year + 50, month=3, day=1)
 
 
 def _build(year: int, month: str, day: int, hh: str, mm: str, ss: str, text: str) -> datetime:

@@ -46,6 +46,10 @@ classes are the executable form of the formulas:
   `sleep` starting at `base`. `DecorrelatedJitter()`. Each delay derives from the
   previous one, so the schedule only supplies `base` (its first delay).
 
+The simulator's client counts its first retry as attempt 1, so its first exponential
+wait is `2 * base`; backoffs counts from 0. `Exponential(2 * base)` reproduces the
+simulator's waits exactly.
+
 ### gRPC connection backoff
 
 `doc/connection-backoff.md` in the gRPC repository,
@@ -68,7 +72,8 @@ Google Cloud documentation, for example
 `maximum_backoff`, which is typically 32 or 64 seconds.
 
 `Policy.google_cloud(maximum_backoff=32.0)` is `Exponential(1.0, 2.0)` with
-`AdditiveJitter(1.0)` and `cap=maximum_backoff`.
+`AdditiveJitter(1.0)` and `cap=maximum_backoff`, so `maximum_backoff` must be at least
+the first wait, 1 s.
 
 ### Retry-After (RFC 9110, section 10.2.3)
 
