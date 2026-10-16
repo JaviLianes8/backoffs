@@ -79,7 +79,10 @@ class Delays(Iterator[float]):
         reading = self._clock()
         if isinstance(reading, bool) or not isinstance(reading, (int, float)):
             raise InvalidPolicyError(f"clock must return a number, got {preview(reading)}")
-        return float(reading)
+        try:
+            return float(reading)
+        except OverflowError:
+            return math.inf  # too large for a float: the budget is spent
 
     def floor_next(self, seconds: float) -> None:
         """Make the next delay at least ``seconds`` (a server hint wins over the cap).

@@ -74,3 +74,9 @@ def test_integer_clocks_are_fine() -> None:
     delays = Policy(Constant(1.0), max_elapsed=10.0).delays(clock=lambda: next(ticks))
     assert len(list(delays)) >= 1
     assert isinstance(time.monotonic(), float)
+
+
+def test_a_clock_reading_too_large_for_a_float_spends_the_budget() -> None:
+    readings = iter([0, 10**400])
+    delays = Policy(Constant(1.0), max_elapsed=5.0).delays(clock=lambda: next(readings))
+    assert next(delays, None) is None and delays.stop_reason == "max_elapsed"
