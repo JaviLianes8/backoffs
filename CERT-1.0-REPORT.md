@@ -182,3 +182,19 @@ Result: 48 killed at once; 2 survivors (D03, R05) killed by the contracts added 
   528 passed, 11 skipped (fetched sources, live references and the network upgrade
   test) on CPython 3.10.19, 3.11.5, 3.12.12, 3.13.2, 3.14.2 and 3.14.2 free-threaded.
   3.8 and 3.9 are below `requires-python`.
+
+## Independent QA lenses (item 19)
+
+Each lens was a fresh reviewer that read the certification rules and CERT-1.0.md first,
+ran the code rather than only reading it, reported only to the author and posted nothing
+to GitHub. Lenses ran one at a time. Later rounds were bounded to confirming earlier
+findings plus one sweep of the code changed since.
+
+| Lens | Round | Head | Verdict | Findings and outcome |
+| --- | --- | --- | --- | --- |
+| a. API and docs | 1 | e499298 | FAIL | the `jitter_first` bool check and `backoff(rng=...)` check were missing from the CHANGELOG; the CHANGELOG and GUIDE claimed every argument was checked, yet a synchronous `fn` given to `aretry` was called and retried six times, a blocking `sleep` blocked the loop and a clock returning `None` failed with a raw `TypeError`. Fixed in e30f423 (awaitables and clock readings checked, wording narrowed, `tests/test_contract_async.py`) |
+| a | 2 | e30f423 | PASS | both confirmed; 88 docstring examples, every README and GUIDE example and a strict consumer client rerun. Nit (a clock reading too large for a float leaked `OverflowError`) fixed in 03df168 |
+| b. Correctness and ground truth | 1 | 5ead5a7 | PASS (1 low finding) | own harness, sources fetched in its run, 200,881 seeded comparisons: AWS simulator classes, tenacity 9.2.1, backoff 2.2.1, google-api-core 2.42.0, urllib3 2.8.0, the gRPC pseudo-code and grpc-go, Google's formula, `email.utils`, urllib3 and `http.cookiejar` for dates; all bit-exact or within 4 ulp where the oracle raises to a power. Finding: the RFC 850 fifty-year limit was measured as 50 x 365.2425 days, not calendar years. Fixed in a646201 with contracts |
+| b | 2 | 3e70b67 | PASS | 1,200 RFC 850 cases against its own derivation, 0 mismatches; boundaries (exactly 50 years, 29 February, year 9990) confirmed |
+| c. Adversarial and robustness | 1 | 3e70b67 | FAIL | 200,000 random policies, 200,000 hostile `Retry-After` values, 100,000 retry runs, 600 hostile CLI option sets: no crash, hang, leak or exceeded budget, but `AdditiveJitter` could overflow to infinity, `backoff()` documented `InvalidPolicyError` where it raises `TypeError` for non-numbers, a `raw()` returning a list failed late, an extreme `now` leaked `OverflowError`, the CLI JSON could print `Infinity`, and `--retry-on-exit -1` never matched on Windows. Fixed in 07c5280 (saturation, iterable schedules, typed errors, signed and unsigned codes, docstring, GUIDE thread note, `tests/test_contract_limits.py`) |
+| c | 2 | 07c5280 | PASS | all six confirmed; bounded sweep of 120,000 policies, 120,000 `Retry-After` values and 60,000 retry runs on the same seeds: 0 failures (round 1 hit the overflow 75 times) |
