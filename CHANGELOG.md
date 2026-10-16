@@ -49,7 +49,9 @@ exit statuses.
   keeps a `max_elapsed` budget open forever or crashes; the budget counts as spent.
 - An integer too large for a float raises `InvalidPolicyError` instead of
   `OverflowError`, everywhere a number is accepted.
-- `parse_retry_after()`: an RFC 850 date on 29 February of a year that has one is no
+- `parse_retry_after()`: the RFC 850 "more than 50 years in the future" rule counts
+  calendar years (a date just under 50 years ahead was read as the previous century);
+  an RFC 850 date on 29 February of a year that has one is no
   longer refused when the next century's year does not; a leap second on 31 December
   9999 raises `RetryAfterError` instead of `OverflowError`; a delay longer than 309
   digits is refused without converting it; `now` must be a `datetime`.
