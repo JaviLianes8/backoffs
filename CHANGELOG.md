@@ -45,8 +45,8 @@ exit statuses.
 - A custom schedule that ends, or a custom schedule or jitter that yields a negative,
   NaN or infinite delay, raises `InvalidPolicyError` instead of ending the iterator
   silently or handing the value to `sleep`.
-- A clock that returns NaN or an infinity no longer keeps a `max_elapsed` budget open
-  forever; the budget counts as spent.
+- A clock that returns NaN, an infinity or an integer too large for a float no longer
+  keeps a `max_elapsed` budget open forever or crashes; the budget counts as spent.
 - An integer too large for a float raises `InvalidPolicyError` instead of
   `OverflowError`, everywhere a number is accepted.
 - `parse_retry_after()`: an RFC 850 date on 29 February of a year that has one is no
