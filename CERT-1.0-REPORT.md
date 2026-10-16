@@ -10,9 +10,48 @@ Progress:
 - [x] Docs: README, GUIDE, CHANGELOG (items 11, 12)
 - [x] Packaging, e2e and upgrade from PyPI 0.2.0 (items 8, 10, 13, 14), author run
 - [x] Five QA lenses report PASS (item 19)
-- [ ] Independent reviewer reports PASS (item 16)
-- [ ] Gates (item 15), final run
-- [ ] PR and trace guard CLEAN (item 17); merge and publish left to the maintainer
+- [x] Independent reviewer reports PASS (item 16)
+- [x] Gates (item 15), final run
+- [x] PR and trace guard CLEAN (item 17); merge and publish left to the maintainer
+
+## Scorecard
+
+Independent review (item 16), round 2 at 87813ed; the commits after it touch only this
+report and the README badge.
+
+| # | Item | Result |
+| --- | --- | --- |
+| 1 | Public API reviewed for stability | PASS: all 23 names, signatures and defaults kept from 0.2.0 with identical seeded output; every behaviour change in CHANGELOG 1.0.0 with an upgrade list |
+| 2 | `__all__` exact, no private imports in docs | PASS: 23 names |
+| 3 | Docstrings with runnable examples, doctests | PASS: every public name plus three preset and iterator methods; every README and GUIDE example and command line runs in `tests/test_docs.py` |
+| 4 | Typed end to end | PASS: `mypy --strict src tests scripts` clean, `py.typed` shipped, a strict consumer client clean (lens a) |
+| 5 | Typed, documented, bounded errors | PASS: GUIDE table; hostile inputs give typed errors under 120 characters with no echo |
+| 6 | Contract tests of every public name | PASS |
+| 7 | Real ground truth | PASS: AWS simulator code, tenacity 9.2.1 and backoff 2.2.1 recorded and live (81 of 85 runs bit for bit, 4 within 12 digits); gRPC spec, grpc-go, Google Cloud and RFC 9110 fetched with manifest; lens b 200,881 comparisons with its own harness |
+| 8 | Real e2e from the wheel | PASS: console script and `python -m backoffs` by subprocess, sabotage caught, in-place upgrade from PyPI 0.2.0 |
+| 9 | Seeded fuzz, no crash, hang or blowup | PASS: suite fuzz plus lens c (520,000 cases over two rounds), linear time to 10 MB |
+| 10 | Supported Pythons | PASS: CPython 3.10.19, 3.11.5, 3.12.12, 3.13.2, 3.14.2 and 3.14.2 free-threaded; 3.8 and 3.9 are below `requires-python` |
+| 11 | README and `twine check` | PASS |
+| 12 | Dated CHANGELOG 1.0.0 section | PASS |
+| 13 | pyproject 1.0.0, Production/Stable | PASS |
+| 14 | sdist and wheel contents | PASS |
+| 15 | Gates each exit 0 | PASS: each alone on a fresh clone at 87813ed (591 passed, 11 skipped: fetched sources, live references and the network upgrade test) |
+| 16 | Independent reviewer | PASS: round 1 FAIL at 0d98af7, round 2 PASS at 87813ed |
+| 17 | PR and trace guard | PR #3, trace guard CLEAN; merge and publish left to the maintainer |
+| 18 | Contracts bite (mutations) | PASS: author 50, blind lens e 184 over three rounds, reviewer 40; every non-equivalent survivor killed by a contract |
+| 19 | Five independent QA lenses | PASS: a round 2, b round 2, c round 2, d round 1, e round 3 |
+
+## Behaviour changes against PyPI 0.2.0
+
+CHANGELOG 1.0.0's "Upgrading from 0.2.0" list is the reference; lenses a and d traced
+every difference they measured to a line there. Seeded sequences, presets, `backoff()`
+and `retry` results are identical. Changed: `backoffs` exit statuses (2 for usage; `run`
+exits with the command's last status, 124 on timeout, 126, 127, 130); `RetryError`'s
+message names only the last exception's type; eager typed argument checks
+(`InvalidPolicyError`), including clock readings and `aretry` awaitables; bounded error
+messages; ASCII digits only and calendar years for the RFC 850 rule in `Retry-After`;
+overflowing additive jitter and totals saturate; `RetryError` pickles; public names
+report `backoffs` as their module.
 
 ## Baseline on 0.2.0 (before any change)
 
@@ -207,4 +246,5 @@ findings plus one sweep of the code changed since.
 
 | Round | Head | Verdict | Findings and outcome |
 | --- | --- | --- | --- |
-| 1 | 0d98af7 | FAIL (items 6, 16, 18) | gates each exit 0 alone on a fresh clone (585 passed, 11 skipped), `mypy --strict src tests` clean, wheel and sdist built and `twine check --strict` passed, fetched sources matched their hashes, `test_sources` and `test_oracle` live 96 passed, upgrade from PyPI 0.2.0 identical, suite green on 3.10 to 3.14 free-threaded; its own 40 mutations: 37 killed, 2 equivalent (M09, M24), 1 survivor (M36: `if hint is not None:` changed to `if hint:` in `_controller.py`; no contract feeds `retry`/`aretry` a `retry_after` hook returning `False`, `""` or `[]`). Pending: a contract for M36, then round 2 |
+| 1 | 0d98af7 | FAIL (items 6, 16, 18) | gates each exit 0 alone on a fresh clone (585 passed, 11 skipped), `mypy --strict src tests` clean, wheel and sdist built and `twine check --strict` passed, fetched sources matched their hashes, `test_sources` and `test_oracle` live 96 passed, upgrade from PyPI 0.2.0 identical, suite green on 3.10 to 3.14 free-threaded; its own 40 mutations: 37 killed, 2 equivalent (M09, M24), 1 survivor (M36: `if hint is not None:` changed to `if hint:` in `_controller.py`; no contract fed `retry`/`aretry` a `retry_after` hook returning `False`, `""` or `[]`), pinned in 87813ed by `test_contract_async::test_a_bad_retry_after_hint_is_refused_by_both_helpers` |
+| 2 | 87813ed | PASS | M36 killed by that contract on a fresh clone; gates each exit 0 alone on Elena's PC, CPython 3.14.2 (591 passed, 11 skipped) |

@@ -1,5 +1,7 @@
 # backoffs
 
+[![Lianes8 Certified](https://lianes8studio.com/certified/lianes8-certified-badge.svg)](https://lianes8studio.com/certified)
+
 Typed, zero-dependency backoff delays for Python. Exponential, linear, Fibonacci or
 constant growth, a cap, the AWS, gRPC and Google Cloud jitter strategies implemented
 exactly as published, retry and time budgets, `Retry-After` support, optional sync and
