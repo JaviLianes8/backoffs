@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ._backoff import backoff
+from ._controller import RetryState
 from ._delays import Delays
 from ._errors import BackoffError, InvalidPolicyError, RetryAfterError, RetryError
 from ._jitter import (
@@ -15,7 +16,7 @@ from ._jitter import (
     ProportionalJitter,
 )
 from ._policy import Policy
-from ._retry import RetryState, aretry, retry
+from ._retry import aretry, retry
 from ._retry_after import parse_retry_after
 from ._schedules import Constant, Exponential, Fibonacci, Linear, Schedule
 

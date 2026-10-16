@@ -81,17 +81,20 @@ def test_schedule_jitter_options(capsys: Capture) -> None:
         (["run"], "run needs a command"),
     ],
 )
-def test_errors_go_to_stderr_with_exit_one(capsys: Capture, args: list[str], message: str) -> None:
-    assert main(args) == 1
+def test_errors_go_to_stderr_with_exit_two_or_one(
+    capsys: Capture, args: list[str], message: str
+) -> None:
+    # A Retry-After value that does not parse is a data error (1); the rest are usage (2).
+    assert main(args) == (1 if args[0] == "retry-after" else 2)
     captured = capsys.readouterr()
     assert captured.out == ""
     assert message in captured.err
 
 
-def test_usage_errors_exit_one_not_two(capsys: Capture) -> None:
+def test_usage_errors_exit_two(capsys: Capture) -> None:
     with pytest.raises(SystemExit) as caught:
         main(["schedule", "--jitter", "wobble"])
-    assert caught.value.code == 1
+    assert caught.value.code == 2
     assert "invalid choice" in capsys.readouterr().err
 
 
@@ -125,11 +128,11 @@ def test_schedule_of_zero_delays_with_only_a_budget_is_truncated(capsys: Capture
     assert "truncated at 10000 rows" in captured.err
 
 
-@pytest.mark.parametrize("value", ["0", "-1", "nan", "soon"])
-def test_attempt_timeout_must_be_positive(capsys: Capture, value: str) -> None:
+@pytest.mark.parametrize("value", ["0", "-1", "nan", "inf", "1e9", "soon"])
+def test_attempt_timeout_must_be_positive_and_waitable(capsys: Capture, value: str) -> None:
     with pytest.raises(SystemExit) as caught:
         main(["run", "--attempt-timeout", value, "--", "x"])
-    assert caught.value.code == 1
+    assert caught.value.code == 2
     assert "positive number of seconds" in capsys.readouterr().err
 
 
@@ -165,26 +168,27 @@ def test_run_succeeds_after_real_failures(tmp_path: Path, capsys: Capture) -> No
     assert capsys.readouterr().err.count("failed (exit code 5)") == 2
 
 
-def test_run_gives_up_with_exit_one(tmp_path: Path, capsys: Capture) -> None:
+def test_run_gives_up_with_the_last_exit_status(tmp_path: Path, capsys: Capture) -> None:
     cmd = script(tmp_path, "import sys\nsys.exit(4)\n")
-    assert main(["run", "--base", "0.01", "--max-retries", "2", "--", *cmd]) == 1
+    assert main(["run", "--base", "0.01", "--max-retries", "2", "--", *cmd]) == 4
     assert "giving up after 3 attempt(s) (max_retries)" in capsys.readouterr().err
 
 
 def test_run_stops_on_a_non_retryable_exit_code(tmp_path: Path, capsys: Capture) -> None:
     cmd = script(tmp_path, "import sys\nsys.exit(4)\n")
-    assert main(["run", "--retry-on-exit", "75", "--", *cmd]) == 1
-    assert "non-retryable exit code 4" in capsys.readouterr().err
+    assert main(["run", "--retry-on-exit", "75", "--", *cmd]) == 4
+    err = capsys.readouterr().err
+    assert "non-retryable exit code 4" in err and "retrying" not in err
 
 
 def test_run_retries_a_timed_out_attempt(tmp_path: Path, capsys: Capture) -> None:
     cmd = script(tmp_path, "import time\ntime.sleep(5)\n")
     args = ["run", "-q", "--attempt-timeout", "0.3", "--base", "0.01", "--max-retries", "1"]
-    assert main([*args, "--", *cmd]) == 1
+    assert main([*args, "--", *cmd]) == 124
     err = capsys.readouterr().err
     assert "timed out after 0.3s" in err and "retrying" not in err
 
 
 def test_run_reports_a_missing_program(capsys: Capture) -> None:
-    assert main(["run", "--", "backoffs-no-such-program-xyz"]) == 1
+    assert main(["run", "--", "backoffs-no-such-program-xyz"]) == 127
     assert "cannot run 'backoffs-no-such-program-xyz'" in capsys.readouterr().err

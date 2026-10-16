@@ -62,7 +62,8 @@ def test_exhausting_max_retries_raises_retry_error_from_the_last_exception() -> 
     error = caught.value
     assert (error.attempts, error.reason, error.elapsed) == (3, "max_retries", 2.0)
     assert error.last_exception is last and error.__cause__ is last
-    assert "3 attempt(s)" in str(error) and "third" in str(error)
+    assert "3 attempt(s)" in str(error) and "OSError" in str(error)
+    assert "third" not in str(error)  # the text of the last error may hold secrets
 
 
 def test_max_elapsed_uses_the_clock_including_call_time() -> None:

@@ -1,13 +1,8 @@
 """Jitter strategies: how a raw (already capped) delay becomes the delay you sleep.
 
-Formulas, with ``raw = min(cap, schedule delay)``:
-
-* :class:`FullJitter`, :class:`EqualJitter` and :class:`DecorrelatedJitter` follow the
-  AWS Architecture Blog post "Exponential Backoff And Jitter" (Marc Brooker, 2015).
-* :class:`ProportionalJitter` is the ``UniformRandom(-JITTER * b, JITTER * b)`` term
-  of the gRPC connection backoff spec (``doc/connection-backoff.md``).
-* :class:`AdditiveJitter` is Google Cloud's truncated exponential backoff,
-  ``min((2 ** n) + random_number_milliseconds, maximum_backoff)``.
+Full, equal and decorrelated jitter follow the AWS Architecture Blog post "Exponential
+Backoff And Jitter" (Marc Brooker, 2015); proportional jitter is the gRPC connection
+backoff spec; additive jitter is Google Cloud's truncated exponential backoff.
 """
 
 from __future__ import annotations
@@ -18,13 +13,25 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from ._errors import InvalidPolicyError
-from ._validate import finite, non_negative
+from ._validate import finite, non_negative, preview
 
 _CEILING = sys.float_info.max
 
 
 class Jitter(Protocol):
-    """A strategy that turns one raw delay into the delay to sleep."""
+    """A strategy that turns one raw delay into the delay to sleep.
+
+    Any object with this ``apply`` method fits; accept ``**_`` for the keyword
+    arguments you do not use. The result must be a finite number ``>= 0``.
+
+    >>> import random
+    >>> from backoffs import Constant, Policy
+    >>> class Halve:
+    ...     def apply(self, raw: float, **_: object) -> float:
+    ...         return raw / 2
+    >>> list(Policy(Constant(4.0), Halve(), max_retries=2).delays())
+    [2.0, 2.0]
+    """
 
     def apply(
         self,
@@ -47,7 +54,12 @@ class Jitter(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class NoJitter:
-    """``sleep = raw``: the deterministic capped schedule."""
+    """``sleep = raw``: the deterministic capped schedule.
+
+    >>> from backoffs import Exponential, NoJitter, Policy
+    >>> list(Policy(Exponential(1.0), NoJitter(), cap=4.0, max_retries=4).delays())
+    [1.0, 2.0, 4.0, 4.0]
+    """
 
     def apply(self, raw: float, **_: object) -> float:
         return raw
@@ -55,7 +67,14 @@ class NoJitter:
 
 @dataclass(frozen=True, slots=True)
 class FullJitter:
-    """AWS Full Jitter: ``sleep = random_between(0, raw)``. Mean ``raw / 2``."""
+    """AWS Full Jitter: ``sleep = random_between(0, raw)``. Mean ``raw / 2``.
+
+    >>> import random
+    >>> from backoffs import Constant, FullJitter, Policy
+    >>> delays = Policy(Constant(4.0), FullJitter(), max_retries=50).delays(rng=random.Random(1))
+    >>> all(0.0 <= d <= 4.0 for d in delays)
+    True
+    """
 
     def apply(self, raw: float, *, rng: random.Random, **_: object) -> float:
         return rng.uniform(0.0, raw)
@@ -63,7 +82,14 @@ class FullJitter:
 
 @dataclass(frozen=True, slots=True)
 class EqualJitter:
-    """AWS Equal Jitter: ``sleep = raw / 2 + random_between(0, raw / 2)``. Mean ``3 raw / 4``."""
+    """AWS Equal Jitter: ``sleep = raw / 2 + random_between(0, raw / 2)``. Mean ``3 raw / 4``.
+
+    >>> import random
+    >>> from backoffs import Constant, EqualJitter, Policy
+    >>> delays = Policy(Constant(4.0), EqualJitter(), max_retries=50).delays(rng=random.Random(1))
+    >>> all(2.0 <= d <= 4.0 for d in delays)
+    True
+    """
 
     def apply(self, raw: float, *, rng: random.Random, **_: object) -> float:
         half = raw / 2.0
@@ -77,6 +103,13 @@ class DecorrelatedJitter:
     ``sleep`` starts at ``base``. Each delay derives from the previous one, so the
     growth schedule only supplies ``base`` (its first delay); the ``multiplier`` is
     the ``3`` of the published formula. Without a cap the ``min`` is skipped.
+    ``multiplier`` must be a finite number ``>= 1``.
+
+    >>> import random
+    >>> from backoffs import DecorrelatedJitter, Exponential, Policy
+    >>> policy = Policy(Exponential(1.0), DecorrelatedJitter(), cap=10.0, max_retries=50)
+    >>> all(1.0 <= d <= 10.0 for d in policy.delays(rng=random.Random(1)))
+    True
     """
 
     multiplier: float = 3.0
@@ -84,7 +117,7 @@ class DecorrelatedJitter:
     def __post_init__(self) -> None:
         multiplier = finite("multiplier", self.multiplier)
         if multiplier < 1.0:
-            raise InvalidPolicyError(f"multiplier must be at least 1, got {self.multiplier!r}")
+            raise InvalidPolicyError(f"multiplier must be at least 1, got {preview(multiplier)}")
         object.__setattr__(self, "multiplier", multiplier)
 
     def apply(
@@ -110,6 +143,14 @@ class ProportionalJitter:
     The result may exceed the cap by up to ``fraction``, exactly as in the gRPC spec,
     where jitter is added after ``Min(current_backoff * MULTIPLIER, MAX_BACKOFF)``.
     gRPC waits the plain ``INITIAL_BACKOFF`` first: set ``jitter_first=False`` for that.
+    ``fraction`` must be between 0 and 1.
+
+    >>> import random
+    >>> from backoffs import Constant, Policy, ProportionalJitter
+    >>> jitter = ProportionalJitter(0.2, jitter_first=False)
+    >>> delays = list(Policy(Constant(10.0), jitter, max_retries=50).delays(rng=random.Random(1)))
+    >>> delays[0], all(8.0 <= d <= 12.0 for d in delays)
+    (10.0, True)
     """
 
     fraction: float = 0.2
@@ -118,7 +159,9 @@ class ProportionalJitter:
     def __post_init__(self) -> None:
         fraction = non_negative("fraction", self.fraction)
         if fraction > 1.0:
-            raise InvalidPolicyError(f"fraction must be at most 1, got {self.fraction!r}")
+            raise InvalidPolicyError(f"fraction must be at most 1, got {preview(fraction)}")
+        if not isinstance(self.jitter_first, bool):
+            raise InvalidPolicyError("jitter_first must be a bool")
         object.__setattr__(self, "fraction", fraction)
 
     def apply(self, raw: float, *, attempt: int, rng: random.Random, **_: object) -> float:
@@ -132,7 +175,14 @@ class ProportionalJitter:
 class AdditiveJitter:
     """Google Cloud style: ``sleep = min(raw + random_between(0, amount), cap)``.
 
-    ``amount`` is in seconds; Google's guidance uses up to 1000 milliseconds.
+    ``amount`` is in seconds (finite, ``>= 0``); Google's guidance uses up to 1000
+    milliseconds.
+
+    >>> import random
+    >>> from backoffs import AdditiveJitter, Constant, Policy
+    >>> policy = Policy(Constant(2.0), AdditiveJitter(1.0), cap=2.5, max_retries=50)
+    >>> all(2.0 <= d <= 2.5 for d in policy.delays(rng=random.Random(1)))
+    True
     """
 
     amount: float = 1.0
