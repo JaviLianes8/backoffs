@@ -1,0 +1,54 @@
+{
+  "note": "Copies are git-ignored; this file only identifies them.",
+  "files": {
+    "aws_blog.html": {
+      "url": "https://web.archive.org/web/20261006064638id_/https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/",
+      "fetched": "2026-10-16",
+      "size": 1295540,
+      "sha256": "da3a3d464801c7a7055368d5f059074334516cd069482f549276210dabf6511f",
+      "licence": "Amazon, all rights reserved (local copy for testing only)"
+    },
+    "aws_backoff_simulator.py.txt": {
+      "url": "https://raw.githubusercontent.com/aws-samples/aws-arch-backoff-simulator/66cb169277051eea207dbef8c7f71767fe6af144/src/backoff_simulator.py",
+      "fetched": "2026-10-16",
+      "size": 5331,
+      "sha256": "a6cd89e8b607bc65c336013e546fa404b4fae28e98448edf000b3a9db150daeb",
+      "licence": "Apache-2.0"
+    },
+    "grpc_connection_backoff.md": {
+      "url": "https://raw.githubusercontent.com/grpc/grpc/8791d6b1ccb6a694a7369ff21dff3a4228eb8ebf/doc/connection-backoff.md",
+      "fetched": "2026-10-16",
+      "size": 2087,
+      "sha256": "98579361be289b2baa31bd39ac1db58f0a94976bf4823046e0a5760b0f8a57ce",
+      "licence": "Apache-2.0"
+    },
+    "grpc_go_backoff_config.go": {
+      "url": "https://raw.githubusercontent.com/grpc/grpc-go/529d6e8613c335bd2ca3e6d8fabaee872334b7a7/backoff/backoff.go",
+      "fetched": "2026-10-16",
+      "size": 1738,
+      "sha256": "79c43f7f8f0ea8a1aa8a93e0f37a2d9eedd3a6dafde0adee0a0a97a6a0ed5d8d",
+      "licence": "Apache-2.0"
+    },
+    "grpc_go_backoff_impl.go": {
+      "url": "https://raw.githubusercontent.com/grpc/grpc-go/529d6e8613c335bd2ca3e6d8fabaee872334b7a7/internal/backoff/backoff.go",
+      "fetched": "2026-10-16",
+      "size": 3344,
+      "sha256": "f6385bcafb72a06a86d5c28e0cd1680fdad8e3757182e2291fe13b495615a991",
+      "licence": "Apache-2.0"
+    },
+    "google_memorystore_backoff.html": {
+      "url": "https://web.archive.org/web/20250825044547id_/https://cloud.google.com/memorystore/docs/redis/exponential-backoff",
+      "fetched": "2026-10-16",
+      "size": 169835,
+      "sha256": "c49d68b48b185fa2d23f8add8fb2f961845338a6a46dbbbdb90c248827e1b7d5",
+      "licence": "CC BY 4.0 (Google Cloud documentation text)"
+    },
+    "rfc9110.txt": {
+      "url": "https://www.rfc-editor.org/rfc/rfc9110.txt",
+      "fetched": "2026-10-16",
+      "size": 502941,
+      "sha256": "21c1cdce6ab0e5509b04d84a28000836c7a087cf786efe6f04877ebfff47232a",
+      "licence": "IETF Trust Legal Provisions"
+    }
+  }
+}
