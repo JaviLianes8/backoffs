@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import pickle
 from collections.abc import Callable
+from datetime import datetime, timezone
 from typing import Any
 
 import pytest
@@ -38,6 +39,7 @@ class LoudStr(str):
         return "y" * 10_000
 
 
+NOW = datetime(1994, 11, 6, tzinfo=timezone.utc)
 HOSTILE: list[object] = [
     "s" * 100_000,
     -(10**5000),
@@ -162,3 +164,28 @@ def test_retry_error_hides_the_last_message_and_survives_pickling() -> None:
     copy = pickle.loads(pickle.dumps(error))
     assert (copy.attempts, copy.elapsed, copy.reason) == (4, 2.5, "max_elapsed")
     assert str(copy) == str(error) and isinstance(copy.last_exception, OSError)
+
+
+ARABIC_EIGHT = "\u0668"
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "Sun, 06 Nov 1994 0#:49:37 GMT",
+        "Sun, 06 Nov 1994 08:4#:37 GMT",
+        "Sun, 06 Nov 1994 08:49:3# GMT",
+        "Sun, 0# Nov 1994 08:49:37 GMT",
+        "Sun, 06 Nov 199# 08:49:37 GMT",
+        "Sunday, 06-Nov-9# 08:49:37 GMT",
+        "Sunday, 0#-Nov-94 08:49:37 GMT",
+        "Sun Nov  # 08:49:37 1994",
+        "Sun Nov  6 08:49:37 199#",
+        "Sun Nov  6 0#:49:37 1994",
+        "1#0",
+    ],
+)
+def test_every_numeric_field_takes_ascii_digits_only(value: str) -> None:
+    assert parse_retry_after(value.replace("#", "8"), now=NOW) >= 0.0
+    with pytest.raises(RetryAfterError):
+        parse_retry_after(value.replace("#", ARABIC_EIGHT), now=NOW)

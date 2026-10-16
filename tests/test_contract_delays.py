@@ -69,3 +69,11 @@ def test_random_subclasses_are_accepted_as_rng() -> None:
 def test_jitter_first_must_be_a_bool() -> None:
     with pytest.raises(InvalidPolicyError, match="jitter_first"):
         ProportionalJitter(0.2, jitter_first=0)  # type: ignore[arg-type]
+
+
+def test_a_floor_lengthens_one_wait_without_inflating_the_decorrelated_chain() -> None:
+    policy = Policy(Constant(1.0), DecorrelatedJitter(), cap=1000.0, max_retries=4)
+    plain = list(policy.delays(rng=random.Random(9)))
+    floored = policy.delays(rng=random.Random(9))
+    floored.floor_next(500.0)
+    assert list(floored) == [500.0, *plain[1:]]
