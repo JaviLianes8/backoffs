@@ -5,13 +5,13 @@ from __future__ import annotations
 import math
 import random
 import sys
-from collections.abc import Iterator
 
+from ._delays import Delays
 from ._errors import InvalidPolicyError
 from ._jitter import DecorrelatedJitter, EqualJitter, FullJitter, Jitter, NoJitter
 from ._policy import Policy
 from ._schedules import Exponential
-from ._validate import optional_count
+from ._validate import optional_count, preview
 
 _JITTERS: dict[str, Jitter] = {
     "none": NoJitter(),
@@ -28,7 +28,7 @@ def backoff(
     jitter: str = "none",
     max_attempts: int | None = None,
     rng: random.Random | None = None,
-) -> Iterator[float]:
+) -> Delays:
     """Yield a backoff delay sequence in seconds, without ever sleeping.
 
     Delays grow geometrically (``base * factor ** attempt``) and are clamped to
@@ -40,15 +40,21 @@ def backoff(
     sequence). Pass a seeded ``rng`` for reproducible jittered sequences.
 
     Arguments are validated eagerly and raise :class:`~backoffs.InvalidPolicyError`
-    (a ``ValueError``). For linear, Fibonacci or constant growth, time budgets and
-    the gRPC and Google Cloud strategies, use :class:`~backoffs.Policy`.
+    (a ``ValueError``), except that a ``base``, ``factor`` or ``cap`` ``float()``
+    cannot read at all (``None``, a list) raises ``TypeError``, as in 0.1. For
+    linear, Fibonacci or constant growth, time budgets and the gRPC and Google Cloud
+    strategies, use :class:`~backoffs.Policy`.
 
     The caller drives its own loop, for example ``for d in backoff(): time.sleep(d)``.
+
+    >>> from backoffs import backoff
+    >>> list(backoff(base=1.0, cap=5.0, max_attempts=5))
+    [1.0, 2.0, 4.0, 5.0, 5.0]
     """
-    if jitter not in _JITTERS:
-        raise InvalidPolicyError(f"jitter must be one of {tuple(_JITTERS)}, got {jitter!r}")
+    if not isinstance(jitter, str) or jitter not in _JITTERS:
+        raise InvalidPolicyError(f"jitter must be one of {tuple(_JITTERS)}, got {preview(jitter)}")
     # 0.1 coerced with float() and accepted infinities and float counts; keep that.
-    base, factor, cap = float(base), float(factor), float(cap)
+    base, factor, cap = _as_float("base", base), _as_float("factor", factor), _as_float("cap", cap)
     if factor == math.inf:
         factor = sys.float_info.max
     if isinstance(max_attempts, float) and max_attempts >= 0 and math.isfinite(max_attempts):
@@ -61,3 +67,11 @@ def backoff(
         max_retries=attempts,
     )
     return policy.delays(rng=rng)
+
+
+def _as_float(name: str, value: float) -> float:
+    try:
+        return float(value)
+    except (ValueError, OverflowError):
+        # float() echoes the whole text it could not read; keep messages short.
+        raise InvalidPolicyError(f"{name} must be a number, got {preview(value)}") from None

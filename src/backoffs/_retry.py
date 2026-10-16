@@ -3,74 +3,18 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import random
 import time
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
-from typing import TypeAlias, TypeVar
+from typing import TypeVar
 
-from ._delays import Delays
-from ._errors import RetryError
+from ._controller import Controller, ExceptionTypes, RetryState
+from ._errors import InvalidPolicyError
 from ._policy import Policy
+from ._validate import callable_or_raise, preview
 
 T = TypeVar("T")
-ExceptionTypes: TypeAlias = type[BaseException] | tuple[type[BaseException], ...]
-
-
-@dataclass(frozen=True, slots=True)
-class RetryState:
-    """What ``on_retry`` receives just before each sleep."""
-
-    attempt: int
-    """The call that just failed, counting from 1."""
-    delay: float
-    """Seconds about to be slept before the next call."""
-    elapsed: float
-    """Seconds since the first call, measured by the injected clock."""
-    exception: BaseException
-    """The exception the failed call raised."""
-
-
-@dataclass(slots=True)
-class _Controller:
-    policy: Policy
-    retry_on: ExceptionTypes
-    giveup: Callable[[BaseException], bool] | None
-    retry_after: Callable[[BaseException], float | None] | None
-    on_retry: Callable[[RetryState], None] | None
-    clock: Callable[[], float]
-    rng: random.Random | None
-    delays: Delays = field(init=False)
-    attempts: int = 0
-
-    def __post_init__(self) -> None:
-        self.delays = self.policy.delays(rng=self.rng, clock=self.clock)
-
-    def next_delay(self, exc: BaseException) -> float | None:
-        """Return the delay before the next call, or ``None`` to re-raise ``exc``.
-
-        Raises :class:`RetryError` when the policy is exhausted.
-        """
-        self.attempts += 1
-        if not isinstance(exc, self.retry_on):
-            return None
-        if self.giveup is not None and self.giveup(exc):
-            return None
-        if self.retry_after is not None:
-            hint = self.retry_after(exc)
-            if hint is not None:
-                self.delays.floor_next(hint)
-        delay = next(self.delays, None)
-        if delay is None:
-            raise RetryError(
-                attempts=self.attempts,
-                elapsed=self.delays.elapsed,
-                reason=self.delays.stop_reason or "max_retries",
-                last_exception=exc,
-            ) from exc
-        if self.on_retry is not None:
-            self.on_retry(RetryState(self.attempts, delay, self.delays.elapsed, exc))
-        return delay
 
 
 def retry(
@@ -99,9 +43,24 @@ def retry(
       exception.
 
     The default policy is ``Policy(max_retries=5)``. ``sleep``, ``clock`` and ``rng``
-    are injectable so tests never wait for real.
+    are injectable so tests never wait for real. Invalid arguments raise
+    :class:`~backoffs.InvalidPolicyError` before ``fn`` is first called.
+
+    >>> from backoffs import Exponential, Policy, retry
+    >>> attempts, slept = [], []
+    >>> def connect() -> str:
+    ...     attempts.append(1)
+    ...     if len(attempts) < 3:
+    ...         raise ConnectionError("refused")
+    ...     return "connected"
+    >>> retry(connect, Policy(Exponential(0.5), max_retries=5), sleep=slept.append)
+    'connected'
+    >>> slept
+    [0.5, 1.0]
     """
-    ctl = _Controller(
+    callable_or_raise("fn", fn)
+    callable_or_raise("sleep", sleep)
+    ctl = Controller(
         Policy(max_retries=5) if policy is None else policy,
         retry_on,
         giveup,
@@ -135,9 +94,26 @@ async def aretry(
     """Async twin of :func:`retry`: awaits ``fn()`` and ``sleep(delay)``.
 
     ``asyncio.CancelledError`` is a ``BaseException``, so with the default
-    ``retry_on=Exception`` cancellation is never swallowed.
+    ``retry_on=Exception`` cancellation is never swallowed. ``fn`` and ``sleep`` must
+    return awaitables; a result that is not one raises
+    :class:`~backoffs.InvalidPolicyError` the first time, and is never retried.
+
+    >>> import asyncio
+    >>> from backoffs import Constant, Policy, aretry
+    >>> attempts = []
+    >>> async def fetch() -> str:
+    ...     attempts.append(1)
+    ...     if len(attempts) < 2:
+    ...         raise TimeoutError
+    ...     return "ok"
+    >>> async def no_wait(seconds: float) -> None:
+    ...     pass
+    >>> asyncio.run(aretry(fetch, Policy(Constant(1.0)), sleep=no_wait))
+    'ok'
     """
-    ctl = _Controller(
+    callable_or_raise("fn", fn)
+    callable_or_raise("sleep", sleep)
+    ctl = Controller(
         Policy(max_retries=5) if policy is None else policy,
         retry_on,
         giveup,
@@ -148,9 +124,16 @@ async def aretry(
     )
     while True:
         try:
-            return await fn()
+            pending = fn()
+            if inspect.isawaitable(pending):
+                return await pending
         except BaseException as exc:
             delay = ctl.next_delay(exc)
             if delay is None:
                 raise
-        await sleep(delay)
+        else:
+            raise InvalidPolicyError(f"fn must return an awaitable, got {preview(pending)}")
+        nap = sleep(delay)
+        if not inspect.isawaitable(nap):
+            raise InvalidPolicyError(f"sleep must return an awaitable, got {preview(nap)}")
+        await nap

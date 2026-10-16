@@ -18,7 +18,16 @@ ROOT = Path(__file__).resolve().parents[1]
 
 @pytest.fixture(scope="module")
 def installed(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
-    """Yield the path of the installed ``backoffs`` console script."""
+    """Yield the path of the installed ``backoffs`` console script.
+
+    From a checkout, the wheel is built and installed into a fresh venv. From an
+    unpacked sdist whose ``src`` was removed (to test an installed wheel), the script
+    installed next to the running interpreter is used instead.
+    """
+    if not (ROOT / "src" / "backoffs").is_dir():
+        scripts = Path(sys.executable).parent
+        yield scripts / ("backoffs.exe" if os.name == "nt" else "backoffs")
+        return
     work = tmp_path_factory.mktemp("e2e")
     wheels = work / "wheels"
     # Reuse a locally installed build backend when there is one, so the test also
@@ -75,18 +84,20 @@ def test_the_installed_script_retries_a_really_failing_command(
     assert result.stderr.count("failed (exit code 3); retrying in") == 2
 
 
-def test_the_installed_script_gives_up_with_exit_one(installed: Path, tmp_path: Path) -> None:
+def test_the_installed_script_gives_up_with_the_last_status(
+    installed: Path, tmp_path: Path
+) -> None:
     script = tmp_path / "broken.py"
     script.write_text("import sys\nsys.exit(9)\n")
     args = ("run", "--base", "0.01", "--max-retries", "2", "--", sys.executable, str(script))
     result = cli(installed, *args)
-    assert result.returncode == 1
+    assert result.returncode == 9
     assert "giving up after 3 attempt(s) (max_retries); last failure: exit code 9" in result.stderr
 
 
 def test_the_installed_script_rejects_bad_usage_on_stderr(installed: Path) -> None:
     result = cli(installed, "schedule", "--max-retries", "-3")
-    assert result.returncode == 1 and result.stdout == ""
+    assert result.returncode == 2 and result.stdout == ""
     assert "max_retries" in result.stderr
 
 

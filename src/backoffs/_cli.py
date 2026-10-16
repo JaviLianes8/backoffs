@@ -5,17 +5,19 @@ from __future__ import annotations
 import argparse
 import itertools
 import json
+import math
 import random
 import sys
+import threading
 from collections.abc import Sequence
 from typing import NoReturn
 
 from . import __version__
 from ._cli_policy import add_policy_options, build_policy
 from ._cli_run import run_command
-from ._errors import BackoffError, InvalidPolicyError
+from ._errors import BackoffError, RetryAfterError
 from ._retry_after import parse_retry_after
-from ._validate import positive
+from ._validate import positive, preview
 
 _MAX_ROWS = 10_000
 _EPILOG = """examples:
@@ -29,10 +31,14 @@ _EPILOG = """examples:
 """
 
 
+USAGE = 2
+INTERRUPTED = 130
+
+
 class _Parser(argparse.ArgumentParser):
     def error(self, message: str) -> NoReturn:
         self.print_usage(sys.stderr)
-        self.exit(1, f"{self.prog}: error: {message}\n")
+        self.exit(USAGE, f"{self.prog}: error: {message}\n")
 
 
 def _subparser(
@@ -49,9 +55,12 @@ def _subparser(
 
 def _seconds(text: str) -> float:
     try:
-        return positive("--attempt-timeout", float(text))
-    except (ValueError, InvalidPolicyError) as exc:
-        raise argparse.ArgumentTypeError(f"must be a positive number of seconds: {text!r}") from exc
+        seconds = positive("--attempt-timeout", float(text))
+    except ValueError:
+        seconds = math.nan
+    if not seconds <= threading.TIMEOUT_MAX:
+        raise argparse.ArgumentTypeError(f"must be a positive number of seconds: {preview(text)}")
+    return seconds
 
 
 def _parser() -> _Parser:
@@ -76,8 +85,9 @@ def _parser() -> _Parser:
         "run",
         "run a command, retrying with backoff until it exits 0 (default bound: 5 retries)",
         "Run COMMAND; on failure sleep the next delay and try again. Exits 0 on "
-        "success, 1 when retries run out, the exit code is not retryable, or the "
-        "command cannot be started.",
+        "success; otherwise with the status of the last attempt (124 if it timed "
+        "out), 126 or 127 if the command cannot start, 2 for bad options and 130 "
+        "when interrupted.",
     )
     add_policy_options(run)
     run.add_argument(
@@ -98,7 +108,8 @@ def _parser() -> _Parser:
         sub,
         "retry-after",
         "convert a Retry-After header value to seconds",
-        "Print the seconds a Retry-After value asks for (a past date prints 0).",
+        "Print the seconds a Retry-After value asks for (a past date prints 0). "
+        "Exits 1 if the value is neither delay-seconds nor an HTTP-date.",
     )
     after.add_argument("value", help="delay-seconds or an HTTP-date (RFC 9110)")
     return parser
@@ -109,9 +120,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
         if args.command == "retry-after":
-            seconds = parse_retry_after(args.value)
-            print(int(seconds) if seconds.is_integer() else f"{seconds:.3f}")
-            return 0
+            return _retry_after(args.value)
         rng = random.Random(args.seed) if args.seed is not None else None
         if args.command == "schedule":
             _print_schedule(args, rng)
@@ -121,17 +130,39 @@ def main(argv: Sequence[str] | None = None) -> int:
             command = command[1:]
         if not command:
             raise ValueError("run needs a command after --")
+        if 0 in args.retry_on_exit:
+            raise ValueError("--retry-on-exit 0 is success and cannot be retried")
+        policy = build_policy(args, default_retries=5)
+        # Jitter can stretch a delay to twice the cap at most; the sleep must accept it.
+        if policy.cap is not None and policy.cap * 2 > threading.TIMEOUT_MAX:
+            raise ValueError(f"--cap must be at most {threading.TIMEOUT_MAX / 2:g} seconds")
+    except (BackoffError, ValueError) as exc:
+        print(f"backoffs: error: {exc}", file=sys.stderr)
+        return USAGE
+    except KeyboardInterrupt:
+        return INTERRUPTED
+    try:
         return run_command(
             command,
-            build_policy(args, default_retries=5),
+            policy,
             retry_on_exit=args.retry_on_exit,
             attempt_timeout=args.attempt_timeout,
             quiet=args.quiet,
             rng=rng,
         )
-    except (BackoffError, ValueError) as exc:
+    except KeyboardInterrupt:
+        print("backoffs: interrupted", file=sys.stderr)
+        return INTERRUPTED
+
+
+def _retry_after(value: str) -> int:
+    try:
+        seconds = parse_retry_after(value)
+    except RetryAfterError as exc:
         print(f"backoffs: error: {exc}", file=sys.stderr)
         return 1
+    print(int(seconds) if seconds.is_integer() else f"{seconds:.3f}")
+    return 0
 
 
 def _print_schedule(args: argparse.Namespace, rng: random.Random | None) -> None:

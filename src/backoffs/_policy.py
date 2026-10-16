@@ -10,7 +10,7 @@ from ._delays import Delays
 from ._errors import InvalidPolicyError
 from ._jitter import AdditiveJitter, DecorrelatedJitter, Jitter, NoJitter, ProportionalJitter
 from ._schedules import Exponential, Schedule
-from ._validate import non_negative, optional_count, positive
+from ._validate import non_negative, optional_count, positive, preview
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,6 +25,7 @@ class Policy:
     ``None`` disables a bound (a schedule of zero delays bounded only by
     ``max_elapsed`` without a clock never ends). A policy never sleeps; call
     :meth:`delays` for a fresh iterator, or hand it to :func:`~backoffs.retry`.
+    Invalid arguments raise :class:`~backoffs.InvalidPolicyError`.
 
     >>> from backoffs import Policy, Exponential
     >>> list(Policy(Exponential(base=1.0), cap=5.0, max_retries=5).delays())
@@ -38,19 +39,24 @@ class Policy:
     max_elapsed: float | None = None
 
     def __post_init__(self) -> None:
+        if not (hasattr(self.schedule, "first") and callable(getattr(self.schedule, "raw", None))):
+            raise InvalidPolicyError(f"schedule must be a Schedule, got {preview(self.schedule)}")
+        if not callable(getattr(self.jitter, "apply", None)):
+            raise InvalidPolicyError(f"jitter must be a Jitter, got {preview(self.jitter)}")
+        first = non_negative("schedule.first", self.schedule.first)
         if self.cap is not None:
             cap = positive("cap", self.cap)
-            if cap < self.schedule.first:
+            if cap < first:
                 raise InvalidPolicyError(
                     f"cap must be greater than or equal to the first delay "
-                    f"({self.schedule.first!r}), got {self.cap!r}"
+                    f"({preview(first)}), got {preview(self.cap)}"
                 )
             object.__setattr__(self, "cap", cap)
         object.__setattr__(self, "max_retries", optional_count("max_retries", self.max_retries))
         if self.max_elapsed is not None:
             elapsed = non_negative("max_elapsed", self.max_elapsed)
             object.__setattr__(self, "max_elapsed", elapsed)
-        if isinstance(self.jitter, DecorrelatedJitter) and self.schedule.first <= 0.0:
+        if isinstance(self.jitter, DecorrelatedJitter) and first <= 0.0:
             raise InvalidPolicyError("decorrelated jitter needs a first delay greater than 0")
 
     def delays(
@@ -64,6 +70,13 @@ class Policy:
         Pass a seeded ``rng`` for reproducible jitter. Pass a monotonic ``clock``
         (such as :func:`time.monotonic`) to measure ``max_elapsed`` in real time,
         including the time spent in your own calls, instead of summing delays.
+
+        >>> import random
+        >>> from backoffs import FullJitter, Policy
+        >>> policy = Policy(jitter=FullJitter(), max_retries=3)
+        >>> a = list(policy.delays(rng=random.Random(7)))
+        >>> a == list(policy.delays(rng=random.Random(7)))
+        True
         """
         return Delays(self, rng=rng, clock=clock)
 
@@ -73,6 +86,12 @@ class Policy:
 
         ``INITIAL_BACKOFF = 1 s``, ``MULTIPLIER = 1.6``, ``JITTER = 0.2``,
         ``MAX_BACKOFF = 120 s``; the first wait is the plain initial backoff.
+
+        >>> import random
+        >>> from backoffs import Policy
+        >>> delays = list(Policy.grpc(max_retries=3).delays(rng=random.Random(0)))
+        >>> delays[0], 1.28 <= delays[1] <= 1.92
+        (1.0, True)
         """
         return cls(
             Exponential(base=1.0, factor=1.6),
@@ -93,7 +112,14 @@ class Policy:
         """Google Cloud truncated exponential backoff.
 
         ``wait = min((2 ** n) + random_number_milliseconds, maximum_backoff)`` with
-        a random part of up to 1000 ms; ``maximum_backoff`` is typically 32 or 64 s.
+        a random part of up to 1000 ms; ``maximum_backoff`` is typically 32 or 64 s and
+        must be at least the first wait, 1 s.
+
+        >>> import random
+        >>> from backoffs import Policy
+        >>> delays = list(Policy.google_cloud(max_retries=7).delays(rng=random.Random(0)))
+        >>> [int(d) for d in delays]
+        [1, 2, 4, 8, 16, 32, 32]
         """
         return cls(
             Exponential(base=1.0, factor=2.0),
