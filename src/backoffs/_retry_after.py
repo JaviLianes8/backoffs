@@ -43,6 +43,7 @@ def parse_retry_after(value: str, *, now: datetime | None = None) -> float:
     a delay too large for a float, a value that is not a ``str`` and a naive ``now``.
 
     >>> from datetime import datetime, timezone
+    >>> from backoffs import parse_retry_after
     >>> parse_retry_after("120")
     120.0
     >>> now = datetime(1994, 11, 6, 8, 49, 0, tzinfo=timezone.utc)

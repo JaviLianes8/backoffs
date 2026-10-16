@@ -45,6 +45,7 @@ def backoff(
 
     The caller drives its own loop, for example ``for d in backoff(): time.sleep(d)``.
 
+    >>> from backoffs import backoff
     >>> list(backoff(base=1.0, cap=5.0, max_attempts=5))
     [1.0, 2.0, 4.0, 5.0, 5.0]
     """
