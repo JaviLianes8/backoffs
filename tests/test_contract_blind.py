@@ -171,3 +171,20 @@ def test_run_without_bounds_makes_six_attempts(tmp_path: Path) -> None:
     )
     assert main(["run", "-q", "--base", "0.001", "--", sys.executable, str(script)]) == 3
     assert counter.read_text() == "6"
+
+
+def test_a_zero_float_count_yields_nothing_as_in_0_1() -> None:
+    assert list(backoff(max_attempts=0.0)) == []  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("year", ["94", "994"])
+def test_asctime_needs_a_four_digit_year(year: str) -> None:
+    with pytest.raises(RetryAfterError):
+        parse_retry_after(f"Sun Nov  6 08:49:37 {year}", now=NOW)
+
+
+def test_a_type_with_a_huge_name_is_previewed_briefly() -> None:
+    odd = type("T" * 500, (), {})()
+    with pytest.raises(InvalidPolicyError) as caught:
+        Policy(cap=odd)
+    assert len(str(caught.value)) < 100
