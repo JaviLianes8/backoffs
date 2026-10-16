@@ -50,7 +50,7 @@ class Delays(Iterator[float]):
         self.policy = policy
         self._rng = rng if rng is not None else random.Random()
         self._clock = clock
-        self._start = clock() if clock is not None else 0.0
+        self._start = self._read() if clock is not None else 0.0
         self._raw = policy.schedule.raw()
         self._base = policy.schedule.first
         self._previous = self._base
@@ -66,11 +66,20 @@ class Delays(Iterator[float]):
     def elapsed(self) -> float:
         """Budget consumed: clock time since creation, or :attr:`total` without a clock.
 
-        A clock reading that is not a finite number counts as an exhausted budget.
+        A reading that is not a number raises :class:`~backoffs.InvalidPolicyError`;
+        a NaN or infinite reading gives a non-finite result, which stops a
+        ``max_elapsed`` budget.
         """
         if self._clock is None:
             return self.total
-        return self._clock() - self._start
+        return self._read() - self._start
+
+    def _read(self) -> float:
+        assert self._clock is not None
+        reading = self._clock()
+        if isinstance(reading, bool) or not isinstance(reading, (int, float)):
+            raise InvalidPolicyError(f"clock must return a number, got {preview(reading)}")
+        return float(reading)
 
     def floor_next(self, seconds: float) -> None:
         """Make the next delay at least ``seconds`` (a server hint wins over the cap).

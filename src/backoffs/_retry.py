@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import random
 import time
 from collections.abc import Awaitable, Callable
 from typing import TypeVar
 
 from ._controller import Controller, ExceptionTypes, RetryState
+from ._errors import InvalidPolicyError
 from ._policy import Policy
-from ._validate import callable_or_raise
+from ._validate import callable_or_raise, preview
 
 T = TypeVar("T")
 
@@ -92,8 +94,9 @@ async def aretry(
     """Async twin of :func:`retry`: awaits ``fn()`` and ``sleep(delay)``.
 
     ``asyncio.CancelledError`` is a ``BaseException``, so with the default
-    ``retry_on=Exception`` cancellation is never swallowed. ``sleep`` must return an
-    awaitable.
+    ``retry_on=Exception`` cancellation is never swallowed. ``fn`` and ``sleep`` must
+    return awaitables; a result that is not one raises
+    :class:`~backoffs.InvalidPolicyError` the first time, and is never retried.
 
     >>> import asyncio
     >>> from backoffs import Constant, Policy, aretry
@@ -121,9 +124,16 @@ async def aretry(
     )
     while True:
         try:
-            return await fn()
+            pending = fn()
+            if inspect.isawaitable(pending):
+                return await pending
         except BaseException as exc:
             delay = ctl.next_delay(exc)
             if delay is None:
                 raise
-        await sleep(delay)
+        else:
+            raise InvalidPolicyError(f"fn must return an awaitable, got {preview(pending)}")
+        nap = sleep(delay)
+        if not inspect.isawaitable(nap):
+            raise InvalidPolicyError(f"sleep must return an awaitable, got {preview(nap)}")
+        await nap

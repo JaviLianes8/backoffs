@@ -31,10 +31,17 @@ exit statuses.
 
 ### Fixed
 
-- `Policy`, `Delays`, `retry()` and `aretry()` check every argument when called and raise
-  `InvalidPolicyError`; a wrong schedule, jitter, policy, `rng`, `clock`, `sleep`,
-  hook or `retry_on` used to fail later with an `AttributeError` or `TypeError`, some
-  only after the first failure.
+- `Policy`, `Delays`, `retry()` and `aretry()` check their arguments' types when called
+  and raise `InvalidPolicyError`; a wrong schedule, jitter, policy, `rng`, `clock`,
+  `sleep`, hook or `retry_on` used to fail later with an `AttributeError` or
+  `TypeError`, some only after the first failure. What callables return is checked when
+  it is used: a clock that returns something other than a number, and in `aretry()` an
+  `fn` or `sleep` that returns something other than an awaitable, raise
+  `InvalidPolicyError` (a plain function given to `aretry()` used to be called and
+  retried until the policy ran out; a blocking `sleep` blocked the event loop first).
+- `ProportionalJitter(jitter_first=...)` accepts only a `bool` (any value was read by its
+  truth before), and `backoff(rng=...)` accepts only a `random.Random`, also with
+  `jitter="none"`, where 0.2.0 ignored it.
 - A custom schedule that ends, or a custom schedule or jitter that yields a negative,
   NaN or infinite delay, raises `InvalidPolicyError` instead of ending the iterator
   silently or handing the value to `sleep`.
@@ -59,7 +66,9 @@ Code that only uses the library keeps working unless it relies on one of these:
 2. Code that reads the last exception's text from `str(RetryError)`: use
    `exc.last_exception` instead.
 3. Code that passes a wrong type and catches `AttributeError` or `TypeError`: catch
-   `InvalidPolicyError` (a `ValueError`).
+   `InvalidPolicyError` (a `ValueError`). This includes a non-`bool` `jitter_first`,
+   a non-`Random` `rng`, a clock that does not return numbers and a synchronous
+   function given to `aretry()`.
 
 ## [0.2.0]
 

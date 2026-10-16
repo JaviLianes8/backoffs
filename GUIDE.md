@@ -114,11 +114,13 @@ and the day name is not checked against the date. Anything else raises
 
 | Error | Base classes | Raised when |
 |---|---|---|
-| `InvalidPolicyError` | `BackoffError`, `ValueError` | an argument of a schedule, jitter, policy, `Delays` or retry helper has the wrong type or is out of range; a custom schedule ends or yields a bad delay |
+| `InvalidPolicyError` | `BackoffError`, `ValueError` | an argument of a schedule, jitter, policy, `Delays` or retry helper has the wrong type or is out of range; a custom schedule ends or yields a bad delay; a clock returns something other than a number; `aretry()` gets a non-awaitable from `fn` or `sleep` |
 | `RetryAfterError` | `BackoffError`, `ValueError` | `parse_retry_after()` gets anything but delay-seconds or an HTTP-date |
 | `RetryError` | `BackoffError` | `retry()` or `aretry()` runs out of retries or time |
 
-Arguments are checked when the object is built, before anything runs. Messages show
+Argument types are checked when the object is built or the helper is called, before
+anything runs; what a callable returns is checked when it is used (a clock must return
+numbers, and `aretry()`'s `fn` and `sleep` must return awaitables). Messages show
 at most a short preview of a rejected value (a long string or a huge number is reduced
 to its length), and `RetryError` names only the type of the last exception, never its
 text. `RetryError` keeps `attempts`, `elapsed`, `reason` and `last_exception` and

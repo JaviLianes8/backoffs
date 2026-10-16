@@ -149,7 +149,8 @@ backoffs retry-after "Sun, 06 Nov 1994 08:49:37 GMT"
 ```
 
 `run` exits 0 once the command succeeds. Otherwise it exits with the status of the
-last attempt (124 if it timed out), 127 if the command is not found, 126 if it cannot
+last attempt (124 if it timed out, 128 plus the signal number on POSIX if a signal
+killed it), 127 if the command is not found, 126 if it cannot
 be executed, 2 for bad options and 130 when interrupted. `retry-after` exits 1 for a
 value that is neither delay-seconds nor an HTTP-date.
 

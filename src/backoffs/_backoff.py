@@ -5,8 +5,8 @@ from __future__ import annotations
 import math
 import random
 import sys
-from collections.abc import Iterator
 
+from ._delays import Delays
 from ._errors import InvalidPolicyError
 from ._jitter import DecorrelatedJitter, EqualJitter, FullJitter, Jitter, NoJitter
 from ._policy import Policy
@@ -28,7 +28,7 @@ def backoff(
     jitter: str = "none",
     max_attempts: int | None = None,
     rng: random.Random | None = None,
-) -> Iterator[float]:
+) -> Delays:
     """Yield a backoff delay sequence in seconds, without ever sleeping.
 
     Delays grow geometrically (``base * factor ** attempt``) and are clamped to
