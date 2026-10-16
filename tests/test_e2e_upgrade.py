@@ -17,9 +17,12 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 PYPI_VERSION = "0.2.0"
-pytestmark = pytest.mark.skipif(
-    os.environ.get("BACKOFFS_E2E_PYPI") != "1", reason="set BACKOFFS_E2E_PYPI=1 (network)"
-)
+pytestmark = [
+    pytest.mark.skipif(
+        os.environ.get("BACKOFFS_E2E_PYPI") != "1", reason="set BACKOFFS_E2E_PYPI=1 (network)"
+    ),
+    pytest.mark.skipif(not (ROOT / "src").is_dir(), reason="needs the source tree to build"),
+]
 PROBE = r"""
 import json, random, subprocess, sys
 import backoffs

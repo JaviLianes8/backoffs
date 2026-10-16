@@ -18,7 +18,16 @@ ROOT = Path(__file__).resolve().parents[1]
 
 @pytest.fixture(scope="module")
 def installed(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
-    """Yield the path of the installed ``backoffs`` console script."""
+    """Yield the path of the installed ``backoffs`` console script.
+
+    From a checkout, the wheel is built and installed into a fresh venv. From an
+    unpacked sdist whose ``src`` was removed (to test an installed wheel), the script
+    installed next to the running interpreter is used instead.
+    """
+    if not (ROOT / "src" / "backoffs").is_dir():
+        scripts = Path(sys.executable).parent
+        yield scripts / ("backoffs.exe" if os.name == "nt" else "backoffs")
+        return
     work = tmp_path_factory.mktemp("e2e")
     wheels = work / "wheels"
     # Reuse a locally installed build backend when there is one, so the test also
